@@ -295,18 +295,29 @@ body { background: var(--negro); color: var(--blanco); font-family: var(--fuente
     </div>
   </div>
 
-  <!-- DISTANCIA + MENSUAL -->
+  <!-- SERVICIOS POR DÍA + MENSUAL -->
   <div class="graficos-grid" style="margin-bottom:16px;">
     <div class="card">
-      <div class="card-header"><div class="card-titulo">📏 DISTANCIA RECORRIDA</div></div>
-      <div class="card-body" id="distancia-stats"></div>
+      <div class="card-header"><div class="card-titulo">📅 SERVICIOS POR DÍA</div></div>
+      <div class="card-body" style="position:relative;height:200px;">
+        <canvas id="chart-diario"></canvas>
+      </div>
     </div>
     <div class="card">
-      <div class="card-header"><div class="card-titulo">📅 SERVICIOS POR MES</div></div>
+      <div class="card-header"><div class="card-titulo">📆 SERVICIOS POR MES</div></div>
       <div class="card-body" style="position:relative;height:200px;">
         <canvas id="chart-mensual"></canvas>
       </div>
     </div>
+  </div>
+
+  <!-- SERVICIOS FALTANTES -->
+  <div class="card full" style="margin-bottom:16px;">
+    <div class="card-header">
+      <div class="card-titulo">⚠️ SERVICIOS SIN REGISTRAR</div>
+      <div style="font-family:var(--fuente-mono);font-size:10px;color:var(--gris-texto);" id="faltantes-count"></div>
+    </div>
+    <div class="card-body" id="faltantes-lista"></div>
   </div>
 
   <!-- HISTORIAL COMPLETO -->
@@ -326,7 +337,6 @@ body { background: var(--negro); color: var(--blanco); font-family: var(--fuente
             <th>MÓVILES</th>
             <th>A CARGO</th>
             <th>PERSONAL</th>
-            <th>DIST.</th>
           </tr>
         </thead>
         <tbody id="historial-body"></tbody>
@@ -356,6 +366,8 @@ let serviciosFiltrados=[];
 
 db.collection('servicios').orderBy('id','desc').onSnapshot(snapshot=>{
   todosServicios=snapshot.docs.map(d=>({...d.data(),_docId:d.id}));
+  // Ordenar por número de servicio descendente
+  todosServicios.sort((a,b)=>(b.num||0)-(a.num||0));
   document.getElementById('loading').style.display='none';
   document.getElementById('sync-dot').style.background='#1D9E75';
   document.getElementById('sync-label').textContent='EN VIVO';
@@ -408,14 +420,7 @@ function aplicarFiltros(){
     return true;
   });
 
-  // Deduplicar
-  const vistos=new Set();
-  serviciosFiltrados=serviciosFiltrados.filter(s=>{
-    const key=s.num?String(s.num):String(s.id);
-    if(vistos.has(key)) return false;
-    vistos.add(key); return true;
-  });
-
+  // Sin deduplicación — mostrar todos los registros
   renderTodo();
 }
 
@@ -429,14 +434,20 @@ function resetFiltros(){
 }
 
 function renderTodo(){
-  const sv=serviciosFiltrados;
-  const total=sv.length;
+  const sv=serviciosFiltrados; // todos los registros (para historial)
+  // Servicios únicos por número (para métricas y gráficos)
+  const vistos=new Set();
+  const svUnicos=sv.filter(s=>{
+    const key=s.num?String(s.num):String(s.id);
+    if(vistos.has(key)) return false;
+    vistos.add(key); return true;
+  });
+  const total=svUnicos.length;
 
   // Maps
-  const tipoMap={}, movilMap={}, integranteMap={}, mensualMap={};
-  let distTotal=0, distCount=0;
+  const tipoMap={}, movilMap={}, integranteMap={}, mensualMap={}, diarioMap={};
 
-  sv.forEach(s=>{
+  svUnicos.forEach(s=>{
     if(s.tipo&&s.tipo!=='—') tipoMap[s.tipo]=(tipoMap[s.tipo]||0)+1;
     (s.moviles||[]).forEach(m=>{
       if(!m||!m.trim()) return;
@@ -460,6 +471,8 @@ function renderTodo(){
     }
     participantes.forEach(p=>{ if(p) integranteMap[p]=(integranteMap[p]||0)+1; });
 
+    // Diario
+    if(s.ts){ const fd=s.ts.split(',')[0].trim(); diarioMap[fd]=(diarioMap[fd]||0)+1; }
     // Mensual
     if(s.ts){
       const partes=s.ts.split(',')[0].split('/');
@@ -470,14 +483,10 @@ function renderTodo(){
     }
 
     // Distancia
-    if(s.distancia&&s.distancia!=='—'&&s.distancia!=='⚠ Dirección no encontrada'){
-      const km=parseFloat(s.distancia);
-      if(!isNaN(km)){ distTotal+=km; distCount++; }
-    }
   });
 
   // MÉTRICAS
-  const lastNum=sv[0]?.num||'—';
+  const lastNum=svUnicos[0]?.num||'—';
   const totalMovilesUnicos=Object.keys(movilMap).length;
   document.getElementById('metricas-grid').innerHTML=[
     {label:'Total servicios',val:total,cls:'rojo',sub:'registros únicos',col:'m-rojo'},
@@ -485,7 +494,7 @@ function renderTodo(){
     {label:'Tipos distintos',val:Object.keys(tipoMap).length,cls:'',sub:'clasificaciones',col:'m-azul'},
     {label:'Móviles activos',val:totalMovilesUnicos,cls:'azul',sub:'en servicios',col:'m-azul'},
     {label:'Integrantes',val:Object.keys(integranteMap).length,cls:'violeta',sub:'participaron',col:'m-violeta'},
-    {label:'Km recorridos',val:distTotal>0?distTotal.toFixed(1)+'km':'—',cls:'verde',sub:`en ${distCount} servicios con dato`,col:'m-verde'},
+    {label:'Días con servicio',val:Object.keys(diarioMap).length,cls:'verde',sub:'días con al menos 1 servicio',col:'m-verde'},
   ].map(c=>`<div class="metrica ${c.col}"><div class="m-label">${c.label}</div><div class="m-val ${c.cls}">${c.val}</div><div class="m-sub">${c.sub}</div></div>`).join('');
 
   // TORTA TIPO
@@ -542,13 +551,32 @@ function renderTodo(){
     </div>`;
   }).join(''):'<div class="empty">SIN DATOS</div>';
 
-  // DISTANCIA
-  document.getElementById('distancia-stats').innerHTML=distCount>0?`
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div><div class="m-label">TOTAL RECORRIDO</div><div class="m-val verde" style="font-size:36px;">${distTotal.toFixed(1)} km</div></div>
-      <div><div class="m-label">PROMEDIO POR SERVICIO</div><div style="font-family:var(--fuente-titulo);font-size:28px;color:var(--azul);">${(distTotal/distCount).toFixed(1)} km</div></div>
-      <div><div class="m-label">SERVICIOS CON DATO</div><div style="font-family:var(--fuente-mono);font-size:14px;color:var(--gris-texto);">${distCount} de ${total}</div></div>
-    </div>`:'<div class="empty">SIN DATOS DE DISTANCIA</div>';
+  // SERVICIOS POR DÍA (últimos 30 días con datos)
+  const diarioEntries=Object.entries(diarioMap).sort((a,b)=>{
+    const [da,ma,ya]=a[0].split('/').map(Number);
+    const [db,mb,yb]=b[0].split('/').map(Number);
+    return new Date(ya,ma-1,da)-new Date(yb,mb-1,db);
+  }).slice(-30); // últimos 30 días con actividad
+  if(diarioEntries.length){
+    if(chartInstances['diario']) chartInstances['diario'].destroy();
+    chartInstances['diario']=new Chart(document.getElementById('chart-diario'),{
+      type:'bar',
+      data:{
+        labels:diarioEntries.map(([k])=>k),
+        datasets:[{data:diarioEntries.map(([,v])=>v),backgroundColor:'#f5c400',borderRadius:3,borderSkipped:false}]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y} servicio${ctx.parsed.y!==1?'s':''}`}}},
+        scales:{
+          x:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},maxRotation:45},grid:{color:'#1a1a1a'}},
+          y:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:10},stepSize:1},grid:{color:'#1a1a1a'},beginAtZero:true}
+        }
+      }
+    });
+  } else {
+    document.getElementById('chart-diario').parentElement.innerHTML='<div class="empty">SIN DATOS</div>';
+  }
 
   // MENSUAL
   const mensualEntries=Object.entries(mensualMap).sort((a,b)=>a[0].localeCompare(b[0]));
@@ -574,6 +602,29 @@ function renderTodo(){
     });
   }
 
+  // SERVICIOS FALTANTES
+  const nums=svUnicos.map(s=>s.num).filter(n=>n&&!isNaN(n)).map(Number);
+  if(nums.length>=2){
+    const minNum=Math.min(...nums);
+    const maxNum=Math.max(...nums);
+    const faltantes=[];
+    for(let i=minNum;i<=maxNum;i++){
+      if(!nums.includes(i)) faltantes.push(i);
+    }
+    document.getElementById('faltantes-count').textContent=`${faltantes.length} FALTANTES (${minNum}–${maxNum})`;
+    const elF=document.getElementById('faltantes-lista');
+    if(faltantes.length===0){
+      elF.innerHTML='<div style="font-family:var(--fuente-mono);font-size:12px;color:#1D9E75;letter-spacing:1px;">✓ NINGÚN SERVICIO FALTANTE EN EL RANGO</div>';
+    } else {
+      elF.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${faltantes.map(n=>`<span style="background:var(--gris-oscuro);border:1px solid var(--rojo);border-radius:3px;padding:4px 10px;font-family:var(--fuente-mono);font-size:13px;color:var(--rojo);">${n}</span>`).join('')}
+      </div>`;
+    }
+  } else {
+    document.getElementById('faltantes-count').textContent='SIN DATOS';
+    document.getElementById('faltantes-lista').innerHTML='<div style="font-family:var(--fuente-mono);font-size:12px;color:var(--gris-texto);">Cargá más servicios para ver faltantes.</div>';
+  }
+
   // HISTORIAL TABLE
   document.getElementById('historial-count').textContent=`${sv.length} REGISTROS`;
   document.getElementById('historial-body').innerHTML=sv.length?sv.map(s=>{
@@ -581,8 +632,16 @@ function renderTodo(){
     const personal=[];
     if(s.chofer&&s.chofer!=='—') personal.push(`<span class="badge verde">Chofer: ${s.chofer}</span>`);
     if(s.componentes) s.componentes.forEach(c=>{ if(c&&c!=='—') personal.push(`<span class="badge violeta">${c}</span>`); });
+    // Para registros viejos sin chofer/componentes, parsear el msg
+    if(!s.chofer && s.msg){
+      s.msg.split('\n').forEach(l=>{
+        const cm=l.match(/Chofer[:\*\s]+(.+)/i);
+        if(cm) personal.push(`<span class="badge verde">Chofer: ${cm[1].trim().replace(/\*/g,'')}</span>`);
+        const co=l.match(/Componente\s+(\d+)[:\*\s]+(.+)/i);
+        if(co) personal.push(`<span class="badge violeta">Comp. ${co[1]}: ${co[2].trim().replace(/\*/g,'')}</span>`);
+      });
+    }
     const dir=s.msg?(s.msg.match(/Lugar[:\*\s]+(.+)/i)||[])[1]?.replace(/\*/g,'').trim()||'—':'—';
-    const dist=s.distancia&&s.distancia!=='—'?`<span class="dist-badge">📏 ${s.distancia}</span>`:'—';
     return `<tr>
       <td><div class="serv-num">${s.num||'—'}</div></td>
       <td><div class="ts-badge">${s.ts||'—'}</div></td>
@@ -591,17 +650,16 @@ function renderTodo(){
       <td>${movBadges||'—'}</td>
       <td><div class="serv-det">${s.cargo||'—'}</div></td>
       <td>${personal.join('')||'—'}</td>
-      <td>${dist}</td>
     </tr>`;
-  }).join(''):'<tr><td colspan="8" class="empty">SIN SERVICIOS</td></tr>';
+  }).join(''):'<tr><td colspan="7" class="empty">SIN SERVICIOS</td></tr>';
 }
 
 function exportarCSV(){
-  const rows=[['N°','Fecha','Tipo','A cargo','Chofer','Móviles','Distancia']];
+  const rows=[['N°','Fecha','Tipo','A cargo','Chofer','Móviles']];
   serviciosFiltrados.forEach(s=>{
     rows.push([
       s.num||'',s.ts||'',s.tipo||'',s.cargo||'',s.chofer||'',
-      (s.moviles||[]).join(' / '),s.distancia||''
+      (s.moviles||[]).join(' / ')
     ]);
   });
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
