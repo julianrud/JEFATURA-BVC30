@@ -311,6 +311,49 @@ body { background: var(--negro); color: var(--blanco); font-family: var(--fuente
     </div>
   </div>
 
+  <!-- PROMEDIO POR DÍA DE SEMANA + FRANJA HORARIA -->
+  <div class="graficos-grid" style="margin-bottom:16px;">
+    <div class="card">
+      <div class="card-header"><div class="card-titulo">📊 PROMEDIO POR DÍA DE LA SEMANA</div></div>
+      <div class="card-body" style="position:relative;height:220px;">
+        <canvas id="chart-semana"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-titulo">🕐 SERVICIOS POR FRANJA HORARIA</div></div>
+      <div class="card-body" style="position:relative;height:220px;">
+        <canvas id="chart-horario"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- SERVICIOS CON MÚLTIPLES MÓVILES + EVOLUCIÓN TIPOS POR MES -->
+  <div class="graficos-grid" style="margin-bottom:16px;">
+    <div class="card">
+      <div class="card-header"><div class="card-titulo">🚒 SERVICIOS CON MÚLTIPLES MÓVILES</div></div>
+      <div class="card-body" style="position:relative;height:220px;">
+        <canvas id="chart-moviles-cant"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-titulo">📈 EVOLUCIÓN DE TIPOS POR MES</div></div>
+      <div class="card-body" style="position:relative;height:220px;">
+        <canvas id="chart-tipos-mes"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- DISTRIBUCIÓN POR CÓDIGO GENERAL -->
+  <div class="card full" style="margin-bottom:16px;">
+    <div class="card-header"><div class="card-titulo">📂 DISTRIBUCIÓN POR CÓDIGO GENERAL DE SERVICIO</div></div>
+    <div class="card-body">
+      <div style="position:relative;width:100%;height:240px;margin-bottom:16px;">
+        <canvas id="chart-codigos"></canvas>
+      </div>
+      <div id="barras-codigos"></div>
+    </div>
+  </div>
+
   <!-- SERVICIOS FALTANTES -->
   <div class="card full" style="margin-bottom:16px;">
     <div class="card-header">
@@ -351,6 +394,8 @@ const DASH_COLORS=['#d32f2f','#378ADD','#1D9E75','#f5c400','#D85A30','#D4537E','
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const chartInstances={};
 
+const TOTAL_PERSONAL = 86; // Total padrón BVC según parte de asistencia
+
 firebase.initializeApp({
   apiKey:"AIzaSyA_X-RBYpJUJWz7vFJz4-i8lX1lNXov6bM",
   authDomain:"bvc-despacho.firebaseapp.com",
@@ -380,7 +425,10 @@ function poblarFiltros(){
   todosServicios.forEach(s=>{
     if(s.tipo&&s.tipo!=='—') tipos.add(s.tipo);
     (s.moviles||[]).forEach(m=>{
-      if(m&&m.trim()) moviles.add('Móvil '+m.replace(/^[Mm][óo]vil\s*/,'').trim());
+      if(!m||!m.trim()||m==='—') return;
+      const cleaned=m.replace(/^[Mm][oó][Vv][iI][lL]\s*/i,'').trim();
+      if(!cleaned||!/^\d+$/.test(cleaned)) return;
+      moviles.add('Móvil '+cleaned);
     });
   });
   const selTipo=document.getElementById('filtro-tipo');
@@ -450,9 +498,11 @@ function renderTodo(){
   svUnicos.forEach(s=>{
     if(s.tipo&&s.tipo!=='—') tipoMap[s.tipo]=(tipoMap[s.tipo]||0)+1;
     (s.moviles||[]).forEach(m=>{
-      if(!m||!m.trim()) return;
-      const norm='Móvil '+m.replace(/^[Mm][óo]vil\s*/,'').trim();
-      if(norm==='Móvil') return;
+      if(!m||!m.trim()||m==='—') return;
+      const cleaned=m.replace(/^[Mm][oó][Vv][iI][lL]\s*/i,'').trim();
+      // Solo contar si el valor restante es numérico (ej: 34, 35)
+      if(!cleaned||!/^\d+$/.test(cleaned)) return;
+      const norm='Móvil '+cleaned;
       movilMap[norm]=(movilMap[norm]||0)+1;
     });
 
@@ -493,8 +543,15 @@ function renderTodo(){
     {label:'Último servicio',val:lastNum,cls:'amarillo',sub:'número más reciente',col:'m-amarillo'},
     {label:'Tipos distintos',val:Object.keys(tipoMap).length,cls:'',sub:'clasificaciones',col:'m-azul'},
     {label:'Móviles activos',val:totalMovilesUnicos,cls:'azul',sub:'en servicios',col:'m-azul'},
-    {label:'Integrantes',val:Object.keys(integranteMap).length,cls:'violeta',sub:'participaron',col:'m-violeta'},
+    {label:'Integrantes activos',val:`${Object.keys(integranteMap).length} / ${TOTAL_PERSONAL}`,cls:'violeta',sub:`${Math.round(Object.keys(integranteMap).length/TOTAL_PERSONAL*100)}% del padrón participó`,col:'m-violeta'},
     {label:'Días con servicio',val:Object.keys(diarioMap).length,cls:'verde',sub:'días con al menos 1 servicio',col:'m-verde'},
+    {label:'Promedio por día',val:(()=>{
+      const fechas=Object.keys(diarioMap).map(f=>{ const [d,m,a]=f.split('/').map(Number); return new Date(a,m-1,d); });
+      if(fechas.length<2) return total||'—';
+      const min=new Date(Math.min(...fechas)), max=new Date(Math.max(...fechas));
+      const diasPeriodo=Math.round((max-min)/(1000*60*60*24))+1;
+      return (total/diasPeriodo).toFixed(1);
+    })(),cls:'azul',sub:'servicios por día del período',col:'m-azul'},
   ].map(c=>`<div class="metrica ${c.col}"><div class="m-label">${c.label}</div><div class="m-val ${c.cls}">${c.val}</div><div class="m-sub">${c.sub}</div></div>`).join('');
 
   // TORTA TIPO
@@ -602,6 +659,100 @@ function renderTodo(){
     });
   }
 
+  // PROMEDIO POR DÍA DE LA SEMANA
+  const DIAS_SEMANA=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const semanaCount=[0,0,0,0,0,0,0]; // total servicios por día
+  const semanaDias=[0,0,0,0,0,0,0];  // cantidad de días distintos por día de semana
+  const diasVistos={}; // para contar días únicos por día de semana
+  svUnicos.forEach(s=>{
+    if(s.ts){
+      const partes=s.ts.split(',')[0].trim().split('/');
+      if(partes.length>=3){
+        const d=parseInt(partes[0]),m=parseInt(partes[1]),a=parseInt(partes[2]);
+        const fecha=new Date(a,m-1,d);
+        const diaSemana=fecha.getDay();
+        const key=`${a}-${m}-${d}`;
+        semanaCount[diaSemana]++;
+        if(!diasVistos[diaSemana]) diasVistos[diaSemana]=new Set();
+        diasVistos[diaSemana].add(key);
+      }
+    }
+  });
+  const promedioSemana=DIAS_SEMANA.map((_,i)=>{
+    const diasUnicos=diasVistos[i]?diasVistos[i].size:1;
+    return diasUnicos>0?(semanaCount[i]/diasUnicos).toFixed(1):0;
+  });
+  if(chartInstances['semana']) chartInstances['semana'].destroy();
+  chartInstances['semana']=new Chart(document.getElementById('chart-semana'),{
+    type:'bar',
+    data:{
+      labels:DIAS_SEMANA,
+      datasets:[{
+        data:promedioSemana,
+        backgroundColor:DIAS_SEMANA.map((_,i)=>i===0||i===6?'#378ADD':'#d32f2f'),
+        borderRadius:4,borderSkipped:false
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>`Promedio: ${ctx.parsed.y} servicios/día`}}
+      },
+      scales:{
+        x:{ticks:{color:'#aaa',font:{family:'IBM Plex Mono',size:11}},grid:{color:'#1a1a1a'}},
+        y:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:10}},grid:{color:'#1a1a1a'},beginAtZero:true}
+      }
+    }
+  });
+
+  // SERVICIOS POR FRANJA HORARIA
+  const FRANJAS=[
+    '00-02','02-04','04-06','06-08','08-10','10-12',
+    '12-14','14-16','16-18','18-20','20-22','22-24'
+  ];
+  const horaCount=new Array(12).fill(0);
+  svUnicos.forEach(s=>{
+    if(s.ts){
+      // ts formato: "17/06/2026, 21:29"
+      const parteHora=s.ts.split(',')[1]?.trim();
+      if(parteHora){
+        const hora=parseInt(parteHora.split(':')[0]);
+        if(!isNaN(hora)&&hora>=0&&hora<24){
+          horaCount[Math.floor(hora/2)]++;
+        }
+      }
+    }
+  });
+  if(chartInstances['horario']) chartInstances['horario'].destroy();
+  chartInstances['horario']=new Chart(document.getElementById('chart-horario'),{
+    type:'bar',
+    data:{
+      labels:FRANJAS,
+      datasets:[{
+        label:'Servicios',
+        data:horaCount,
+        backgroundColor:horaCount.map(v=>{
+          const max=Math.max(...horaCount);
+          const pct=max>0?v/max:0;
+          return pct>0.75?'#d32f2f':pct>0.4?'#D85A30':'#378ADD';
+        }),
+        borderRadius:4,borderSkipped:false
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y} servicio${ctx.parsed.y!==1?'s':''}`}}
+      },
+      scales:{
+        x:{ticks:{color:'#aaa',font:{family:'IBM Plex Mono',size:10}},grid:{color:'#1a1a1a'}},
+        y:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:10},stepSize:1},grid:{color:'#1a1a1a'},beginAtZero:true}
+      }
+    }
+  });
+
   // SERVICIOS FALTANTES
   const nums=svUnicos.map(s=>s.num).filter(n=>n&&!isNaN(n)).map(Number);
   if(nums.length>=2){
@@ -623,6 +774,135 @@ function renderTodo(){
   } else {
     document.getElementById('faltantes-count').textContent='SIN DATOS';
     document.getElementById('faltantes-lista').innerHTML='<div style="font-family:var(--fuente-mono);font-size:12px;color:var(--gris-texto);">Cargá más servicios para ver faltantes.</div>';
+  }
+
+  // SERVICIOS CON MÚLTIPLES MÓVILES
+  const movilCantMap={'1 móvil':0,'2 móviles':0,'3+ móviles':0};
+  // Agrupar todos los móviles del mismo número de servicio
+  const movilesAgrupados={};
+  sv.forEach(s=>{
+    const key=s.num?String(s.num):String(s.id);
+    if(!movilesAgrupados[key]) movilesAgrupados[key]=new Set();
+    (s.moviles||[]).forEach(m=>{
+      if(!m||!m.trim()||m==='—') return;
+      const c=m.replace(/^[Mm][oó]vil\s*/i,'').trim();
+      if(/^\d+$/.test(c)) movilesAgrupados[key].add(c);
+    });
+  });
+  Object.values(movilesAgrupados).forEach(movSet=>{
+    const cant=movSet.size;
+    if(cant===1) movilCantMap['1 móvil']++;
+    else if(cant===2) movilCantMap['2 móviles']++;
+    else if(cant>=3) movilCantMap['3+ móviles']++;
+    // cant===0 se ignora — no se muestra en el gráfico
+  });
+  // Solo mostrar categorías con datos
+  const mcEntries=Object.entries(movilCantMap).filter(([,v])=>v>0);
+  const mcColors={'Sin móvil':'#555','1 móvil':'#1D9E75','2 móviles':'#f5c400','3+ móviles':'#d32f2f'};
+  if(chartInstances['moviles-cant']) chartInstances['moviles-cant'].destroy();
+  if(mcEntries.length){
+    chartInstances['moviles-cant']=new Chart(document.getElementById('chart-moviles-cant'),{
+      type:'doughnut',
+      data:{
+        labels:mcEntries.map(([l])=>l),
+        datasets:[{data:mcEntries.map(([,v])=>v),backgroundColor:mcEntries.map(([l])=>mcColors[l]),borderColor:'#111',borderWidth:3}]
+      },
+      options:{responsive:true,maintainAspectRatio:false,cutout:'50%',plugins:{
+        legend:{display:true,position:'bottom',labels:{color:'#aaa',font:{family:'IBM Plex Mono',size:11},padding:16}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed/total*100)}%)`}}
+      }}
+    });
+  }
+
+  // EVOLUCIÓN DE TIPOS POR MES (top 5 tipos)
+  const tipoMesMap={};
+  svUnicos.forEach(s=>{
+    if(!s.tipo||s.tipo==='—') return;
+    if(s.ts){
+      const partes=s.ts.split(',')[0].split('/');
+      if(partes.length>=3){
+        const key=`${partes[2].trim()}-${String(partes[1]).padStart(2,'0')}`;
+        if(!tipoMesMap[s.tipo]) tipoMesMap[s.tipo]={};
+        tipoMesMap[s.tipo][key]=(tipoMesMap[s.tipo][key]||0)+1;
+      }
+    }
+  });
+  const top5Tipos=Object.entries(tipoMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([t])=>t);
+  const mesesUnicos=[...new Set(svUnicos.map(s=>{ if(!s.ts) return null; const p=s.ts.split(',')[0].split('/'); return p.length>=3?`${p[2].trim()}-${String(p[1]).padStart(2,'0')}`:null; }).filter(Boolean))].sort();
+  if(top5Tipos.length&&mesesUnicos.length){
+    if(chartInstances['tipos-mes']) chartInstances['tipos-mes'].destroy();
+    chartInstances['tipos-mes']=new Chart(document.getElementById('chart-tipos-mes'),{
+      type:'line',
+      data:{
+        labels:mesesUnicos.map(k=>{ const [a,m]=k.split('-'); return MESES[parseInt(m)-1].substring(0,3)+' '+a; }),
+        datasets:top5Tipos.map((tipo,i)=>({
+          label:tipo.length>30?tipo.substring(0,30)+'…':tipo,
+          data:mesesUnicos.map(mes=>(tipoMesMap[tipo]&&tipoMesMap[tipo][mes])||0),
+          borderColor:DASH_COLORS[i%DASH_COLORS.length],
+          backgroundColor:DASH_COLORS[i%DASH_COLORS.length]+'33',
+          tension:0.3,pointRadius:4,borderWidth:2,fill:false
+        }))
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:true,position:'bottom',labels:{color:'#aaa',font:{family:'IBM Plex Mono',size:10},padding:12}}},
+        scales:{
+          x:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:10}},grid:{color:'#1a1a1a'}},
+          y:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:10},stepSize:1},grid:{color:'#1a1a1a'},beginAtZero:true}
+        }
+      }
+    });
+  }
+
+  // DISTRIBUCIÓN POR CÓDIGO GENERAL
+  const CODIGOS_GENERAL = {
+    '01': 'Incendio',
+    '02': 'Auxilio',
+    '03': 'Especiales',
+    '04': 'Desastres',
+    '05': 'Colaboración',
+    '06': 'Guardias',
+    '10': 'Incid. Químicos',
+    '11': 'Forestal',
+    '99': 'Otros'
+  };
+  const codigoMap = {};
+  svUnicos.forEach(s => {
+    if(!s.tipo || s.tipo === '—') return;
+    const match = s.tipo.match(/^(\d+)-/);
+    if(match) {
+      const cod = match[1].padStart(2,'0');
+      const label = CODIGOS_GENERAL[cod] ? `${cod} ${CODIGOS_GENERAL[cod]}` : `${cod} Otros`;
+      codigoMap[label] = (codigoMap[label]||0) + 1;
+    }
+  });
+  const codEntries = Object.entries(codigoMap).sort((a,b)=>b[1]-a[1]);
+  const codTotal = codEntries.reduce((a,[,v])=>a+v,0);
+  const codColors = codEntries.map((_,i)=>DASH_COLORS[i%DASH_COLORS.length]);
+  if(codEntries.length){
+    if(chartInstances['codigos']) chartInstances['codigos'].destroy();
+    chartInstances['codigos'] = new Chart(document.getElementById('chart-codigos'),{
+      type:'doughnut',
+      data:{
+        labels: codEntries.map(([l])=>l),
+        datasets:[{data:codEntries.map(([,v])=>v), backgroundColor:codColors, borderColor:'#111', borderWidth:3}]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, cutout:'55%',
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed/codTotal*100)}%)`}}
+        }
+      }
+    });
+    document.getElementById('barras-codigos').innerHTML = codEntries.map(([label,count],i)=>`
+      <div class="bar-row">
+        <div class="bar-label-row">
+          <span class="bar-label"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${codColors[i]};margin-right:6px;vertical-align:middle;"></span>${label}</span>
+          <span class="bar-count">${count} <span class="bar-pct">(${Math.round(count/codTotal*100)}%)</span></span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(count/codEntries[0][1]*100)}%;background:${codColors[i]};"></div></div>
+      </div>`).join('');
   }
 
   // HISTORIAL TABLE
