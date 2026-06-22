@@ -537,21 +537,28 @@ function renderTodo(){
 
   // MÉTRICAS
   const lastNum=svUnicos[0]?.num||'—';
+  const numsOrdenados=svUnicos.map(s=>s.num).filter(n=>n&&!isNaN(n)).map(Number).sort((a,b)=>a-b);
+  const primerNum=numsOrdenados.length?numsOrdenados[0]:null;
+  const ultimoNum=numsOrdenados.length?numsOrdenados[numsOrdenados.length-1]:null;
+  const totalReal=primerNum&&ultimoNum?ultimoNum-primerNum+1:total;
+  const cantFaltantes=totalReal-total;
+  // Recalcular promedio con total real
+  const promedioReal=(()=>{
+    const fechas=Object.keys(diarioMap).map(f=>{ const [d,m,a]=f.split('/').map(Number); return new Date(a,m-1,d); });
+    if(fechas.length<2) return totalReal||'—';
+    const min=new Date(Math.min(...fechas)), max=new Date(Math.max(...fechas));
+    const diasPeriodo=Math.round((max-min)/(1000*60*60*24))+1;
+    return (totalReal/diasPeriodo).toFixed(1);
+  })();
   const totalMovilesUnicos=Object.keys(movilMap).length;
   document.getElementById('metricas-grid').innerHTML=[
-    {label:'Total servicios',val:total,cls:'rojo',sub:'registros únicos',col:'m-rojo'},
-    {label:'Último servicio',val:lastNum,cls:'amarillo',sub:'número más reciente',col:'m-amarillo'},
+    {label:'Total servicios',val:totalReal,cls:'rojo',sub:`${total} registrados + ${cantFaltantes} sin cargar`,col:'m-rojo'},
+    {label:'Último servicio',val:lastNum,cls:'amarillo',sub:`desde N° ${primerNum||'—'}`,col:'m-amarillo'},
     {label:'Tipos distintos',val:Object.keys(tipoMap).length,cls:'',sub:'clasificaciones',col:'m-azul'},
     {label:'Móviles activos',val:totalMovilesUnicos,cls:'azul',sub:'en servicios',col:'m-azul'},
     {label:'Integrantes activos',val:`${Object.keys(integranteMap).length} / ${TOTAL_PERSONAL}`,cls:'violeta',sub:`${Math.round(Object.keys(integranteMap).length/TOTAL_PERSONAL*100)}% del padrón participó`,col:'m-violeta'},
     {label:'Días con servicio',val:Object.keys(diarioMap).length,cls:'verde',sub:'días con al menos 1 servicio',col:'m-verde'},
-    {label:'Promedio por día',val:(()=>{
-      const fechas=Object.keys(diarioMap).map(f=>{ const [d,m,a]=f.split('/').map(Number); return new Date(a,m-1,d); });
-      if(fechas.length<2) return total||'—';
-      const min=new Date(Math.min(...fechas)), max=new Date(Math.max(...fechas));
-      const diasPeriodo=Math.round((max-min)/(1000*60*60*24))+1;
-      return (total/diasPeriodo).toFixed(1);
-    })(),cls:'azul',sub:'servicios por día del período',col:'m-azul'},
+    {label:'Promedio por día',val:promedioReal,cls:'azul',sub:'servicios por día del período',col:'m-azul'},
   ].map(c=>`<div class="metrica ${c.col}"><div class="m-label">${c.label}</div><div class="m-val ${c.cls}">${c.val}</div><div class="m-sub">${c.sub}</div></div>`).join('');
 
   // TORTA TIPO
