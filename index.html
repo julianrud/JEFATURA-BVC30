@@ -643,8 +643,14 @@ function renderTodo(){
   }
 
   // MENSUAL
+  // Calcular faltantes por mes proporcionalmente
   const mensualEntries=Object.entries(mensualMap).sort((a,b)=>a[0].localeCompare(b[0]));
   if(mensualEntries.length){
+    // Distribuir faltantes proporcionalmente según peso de cada mes
+    const totalRegistrados=mensualEntries.reduce((a,[,v])=>a+v,0);
+    const mensualFaltantes=mensualEntries.map(([,v])=>
+      totalRegistrados>0 ? Math.round((v/totalRegistrados)*cantFaltantes) : 0
+    );
     if(chartInstances['mensual']) chartInstances['mensual'].destroy();
     chartInstances['mensual']=new Chart(document.getElementById('chart-mensual'),{
       type:'bar',
@@ -653,11 +659,27 @@ function renderTodo(){
           const [a,m]=k.split('-');
           return MESES[parseInt(m)-1].substring(0,3)+' '+a;
         }),
-        datasets:[{data:mensualEntries.map(([,v])=>v),backgroundColor:'#d32f2f',borderRadius:3,borderSkipped:false}]
+        datasets:[
+          {
+            label:'Registrados',
+            data:mensualEntries.map(([,v])=>v),
+            backgroundColor:'#d32f2f',
+            borderRadius:3,borderSkipped:false,stack:'total'
+          },
+          {
+            label:'Sin registrar (est.)',
+            data:mensualFaltantes,
+            backgroundColor:'#555',
+            borderRadius:3,borderSkipped:false,stack:'total'
+          }
+        ]
       },
       options:{
         responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y} servicios`}}},
+        plugins:{
+          legend:{display:true,position:'bottom',labels:{color:'#aaa',font:{family:'IBM Plex Mono',size:10},padding:12}},
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}`, footer:items=>`Total estimado: ${items.reduce((a,i)=>a+i.parsed.y,0)}`}}
+        },
         scales:{
           x:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:10}},grid:{color:'#1a1a1a'}},
           y:{ticks:{color:'#666',font:{family:'IBM Plex Mono',size:10},stepSize:1},grid:{color:'#1a1a1a'},beginAtZero:true}
