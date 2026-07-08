@@ -540,7 +540,9 @@ function renderTodo(){
   const numsOrdenados=svUnicos.map(s=>s.num).filter(n=>n&&!isNaN(n)).map(Number).sort((a,b)=>a-b);
   const primerNum=numsOrdenados.length?numsOrdenados[0]:null;
   const ultimoNum=numsOrdenados.length?numsOrdenados[numsOrdenados.length-1]:null;
-  const totalReal=primerNum&&ultimoNum?ultimoNum-primerNum+1:total;
+  // Solo calcular faltantes si no hay filtro de mes/año activo
+  const hayFiltroTemporal=document.getElementById('filtro-mes').value||document.getElementById('filtro-anio').value;
+  const totalReal=(!hayFiltroTemporal&&primerNum&&ultimoNum)?ultimoNum-primerNum+1:total;
   const cantFaltantes=totalReal-total;
   // Recalcular promedio con total real
   const promedioReal=(()=>{
@@ -552,8 +554,8 @@ function renderTodo(){
   })();
   const totalMovilesUnicos=Object.keys(movilMap).length;
   document.getElementById('metricas-grid').innerHTML=[
-    {label:'Total servicios',val:totalReal,cls:'rojo',sub:`${total} registrados + ${cantFaltantes} sin cargar`,col:'m-rojo'},
-    {label:'Último servicio',val:lastNum,cls:'amarillo',sub:`desde N° ${primerNum||'—'}`,col:'m-amarillo'},
+    {label:'Total servicios',val:totalReal,cls:'rojo',sub:hayFiltroTemporal?`${total} registrados en el período`:`${total} registrados + ${cantFaltantes} sin cargar`,col:'m-rojo'},
+    {label:'Último servicio',val:lastNum,cls:'amarillo',sub:hayFiltroTemporal?'en el período filtrado':`desde N° ${primerNum||'—'}`,col:'m-amarillo'},
     {label:'Tipos distintos',val:Object.keys(tipoMap).length,cls:'',sub:'clasificaciones',col:'m-azul'},
     {label:'Móviles activos',val:totalMovilesUnicos,cls:'azul',sub:'en servicios',col:'m-azul'},
     {label:'Integrantes activos',val:`${Object.keys(integranteMap).length} / ${TOTAL_PERSONAL}`,cls:'violeta',sub:`${Math.round(Object.keys(integranteMap).length/TOTAL_PERSONAL*100)}% del padrón participó`,col:'m-violeta'},
@@ -783,26 +785,30 @@ function renderTodo(){
   });
 
   // SERVICIOS FALTANTES
-  const nums=svUnicos.map(s=>s.num).filter(n=>n&&!isNaN(n)).map(Number);
-  if(nums.length>=2){
-    const minNum=Math.min(...nums);
-    const maxNum=Math.max(...nums);
-    const faltantes=[];
-    for(let i=minNum;i<=maxNum;i++){
-      if(!nums.includes(i)) faltantes.push(i);
-    }
-    document.getElementById('faltantes-count').textContent=`${faltantes.length} FALTANTES (${minNum}–${maxNum})`;
-    const elF=document.getElementById('faltantes-lista');
-    if(faltantes.length===0){
-      elF.innerHTML='<div style="font-family:var(--fuente-mono);font-size:12px;color:#1D9E75;letter-spacing:1px;">✓ NINGÚN SERVICIO FALTANTE EN EL RANGO</div>';
-    } else {
-      elF.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px;">
-        ${faltantes.map(n=>`<span style="background:var(--gris-oscuro);border:1px solid var(--rojo);border-radius:3px;padding:4px 10px;font-family:var(--fuente-mono);font-size:13px;color:var(--rojo);">${n}</span>`).join('')}
-      </div>`;
-    }
+  const faltantesCard = document.querySelector('[id="faltantes-count"]')?.closest('.card');
+  if(hayFiltroTemporal){
+    if(faltantesCard) faltantesCard.style.display='none';
   } else {
-    document.getElementById('faltantes-count').textContent='SIN DATOS';
-    document.getElementById('faltantes-lista').innerHTML='<div style="font-family:var(--fuente-mono);font-size:12px;color:var(--gris-texto);">Cargá más servicios para ver faltantes.</div>';
+    if(faltantesCard) faltantesCard.style.display='';
+    const nums=svUnicos.map(s=>s.num).filter(n=>n&&!isNaN(n)).map(Number);
+    if(nums.length>=2){
+      const minNum=Math.min(...nums);
+      const maxNum=Math.max(...nums);
+      const faltantes=[];
+      for(let i=minNum;i<=maxNum;i++){
+        if(!nums.includes(i)) faltantes.push(i);
+      }
+      document.getElementById('faltantes-count').textContent=`${faltantes.length} FALTANTES (${minNum}–${maxNum})`;
+      const elF=document.getElementById('faltantes-lista');
+      if(faltantes.length===0){
+        elF.innerHTML='<div style="font-family:var(--fuente-mono);font-size:12px;color:#1D9E75;letter-spacing:1px;">✓ NINGÚN SERVICIO FALTANTE EN EL RANGO</div>';
+      } else {
+        elF.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px;">${faltantes.map(n=>`<span style="background:var(--gris-oscuro);border:1px solid var(--rojo);border-radius:3px;padding:4px 10px;font-family:var(--fuente-mono);font-size:13px;color:var(--rojo);">${n}</span>`).join('')}</div>`;
+      }
+    } else {
+      document.getElementById('faltantes-count').textContent='SIN DATOS';
+      document.getElementById('faltantes-lista').innerHTML='<div style="font-family:var(--fuente-mono);font-size:12px;color:var(--gris-texto);">Cargá más servicios para ver faltantes.</div>';
+    }
   }
 
   // SERVICIOS CON MÚLTIPLES MÓVILES
