@@ -523,17 +523,20 @@ function renderTodo(){
   // Maps
   const tipoMap={}, movilMap={}, integranteMap={}, mensualMap={}, diarioMap={};
 
-  // Para fecha: agrupar TODOS los registros por número y tomar la fecha más temprana
+  // Para fecha: extraer fecha real del mensaje (campo Fecha:) o usar ts como fallback
   const fechaPorNum={};
-  svTodosGlobal.forEach(s=>{
-    if(!s.ts) return;
+  todosServicios.forEach(s=>{
     const key=s.num?String(s.num):String(s.id);
-    const fd=s.ts.split(',')[0].trim();
-    const [d,m,a]=fd.split('/').map(Number);
-    const fecha=new Date(a,m-1,d);
-    if(!fechaPorNum[key]||fecha<fechaPorNum[key].fecha){
-      fechaPorNum[key]={fecha,fd,ts:s.ts};
+    if(fechaPorNum[key]) return; // ya procesado
+    // Extraer fecha del msg: busca DD/MM/YYYY después de "Fecha"
+    let fd=null;
+    if(s.msg){
+      const mFecha=s.msg.match(/Fecha[^0-9]+(\d{2}\/\d{2}\/\d{4})/);
+      if(mFecha) fd=mFecha[1];
     }
+    // Fallback al ts
+    if(!fd&&s.ts) fd=s.ts.split(',')[0].trim();
+    if(fd) fechaPorNum[key]=fd;
   });
 
   svUnicos.forEach(s=>{
@@ -562,12 +565,10 @@ function renderTodo(){
     }
     participantes.forEach(p=>{ if(p) integranteMap[p]=(integranteMap[p]||0)+1; });
 
-    // Diario y Mensual — usar la fecha más temprana del servicio
+    // Diario y Mensual — usar fecha real del servicio
     const key=s.num?String(s.num):String(s.id);
-    const fechaInfo=fechaPorNum[key];
-    const tsReal=fechaInfo?fechaInfo.ts:s.ts;
-    if(tsReal){
-      const fd=tsReal.split(',')[0].trim();
+    const fd=fechaPorNum[key]||(s.ts?s.ts.split(',')[0].trim():null);
+    if(fd){
       diarioMap[fd]=(diarioMap[fd]||0)+1;
       const partes=fd.split('/');
       if(partes.length>=3){
