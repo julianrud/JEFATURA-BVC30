@@ -408,6 +408,7 @@ const db=firebase.firestore();
 
 let todosServicios=[];
 let serviciosFiltrados=[];
+let svTodosGlobal=[];
 
 db.collection('servicios').orderBy('id','desc').onSnapshot(snapshot=>{
   todosServicios=snapshot.docs.map(d=>({...d.data(),_docId:d.id}));
@@ -445,7 +446,15 @@ function aplicarFiltros(){
   const movil=document.getElementById('filtro-movil').value;
   const busq=document.getElementById('filtro-busqueda').value.toLowerCase();
 
-  serviciosFiltrados=todosServicios.filter(s=>{
+  // Primero deduplicar por número de servicio
+  const vistosDedup=new Set();
+  const todosDedup=todosServicios.filter(s=>{
+    const key=s.num?String(s.num):String(s.id);
+    if(vistosDedup.has(key)) return false;
+    vistosDedup.add(key); return true;
+  });
+
+  serviciosFiltrados=todosDedup.filter(s=>{
     if(tipo && s.tipo!==tipo) return false;
     if(movil){
       const movNorm=(s.moviles||[]).map(m=>'Móvil '+m.replace(/^[Mm][óo]vil\s*/,'').trim());
@@ -468,6 +477,30 @@ function aplicarFiltros(){
     return true;
   });
 
+  // Para historial: mismos filtros pero sin deduplicar, ordenado por número desc
+  svTodosGlobal=todosServicios.filter(s=>{
+    if(tipo && s.tipo!==tipo) return false;
+    if(movil){
+      const movNorm=(s.moviles||[]).map(m=>'Móvil '+m.replace(/^[Mm][óo]vil\s*/,'').trim());
+      if(!movNorm.includes(movil)) return false;
+    }
+    if(mes||anio){
+      const ts=s.ts||'';
+      const partes=ts.split(',')[0].split('/');
+      if(partes.length>=3){
+        const m=parseInt(partes[1]);
+        const a=partes[2].trim();
+        if(mes && MESES[m-1]!==mes) return false;
+        if(anio && a!==anio) return false;
+      }
+    }
+    if(busq){
+      const haystack=(s.msg||'')+(s.cargo||'')+(s.chofer||'')+(s.tipo||'');
+      if(!haystack.toLowerCase().includes(busq)) return false;
+    }
+    return true;
+  }).sort((a,b)=>(b.num||0)-(a.num||0));
+
   // Sin deduplicación — mostrar todos los registros
   renderTodo();
 }
@@ -482,18 +515,29 @@ function resetFiltros(){
 }
 
 function renderTodo(){
-  const sv=serviciosFiltrados; // todos los registros (para historial)
-  // Servicios únicos por número (para métricas y gráficos)
-  const vistos=new Set();
-  const svUnicos=sv.filter(s=>{
-    const key=s.num?String(s.num):String(s.id);
-    if(vistos.has(key)) return false;
-    vistos.add(key); return true;
-  });
+  try {
+  const svUnicos=serviciosFiltrados; // deduplicados — para métricas y gráficos
   const total=svUnicos.length;
+  const svTodos=svTodosGlobal.length?svTodosGlobal:serviciosFiltrados; // fallback
 
   // Maps
   const tipoMap={}, movilMap={}, integranteMap={}, mensualMap={}, diarioMap={};
+
+  // Para fecha: extraer fecha real del mensaje (campo Fecha:) o usar ts como fallback
+  const fechaPorNum={};
+  todosServicios.forEach(s=>{
+    const key=s.num?String(s.num):String(s.id);
+    if(fechaPorNum[key]) return; // ya procesado
+    // Intentar extraer fecha del msg: "Fecha: DD/MM/YYYY"
+    let fd=null;
+    if(s.msg){
+      const m=s.msg.match(/Fecha[:\*\s]+(\d{2}\/\d{2}\/\d{4})/);
+      if(m) fd=m[1];
+    }
+    // Fallback al ts
+    if(!fd&&s.ts) fd=s.ts.split(',')[0].trim();
+    if(fd) fechaPorNum[key]=fd;
+  });
 
   svUnicos.forEach(s=>{
     if(s.tipo&&s.tipo!=='—') tipoMap[s.tipo]=(tipoMap[s.tipo]||0)+1;
@@ -521,14 +565,15 @@ function renderTodo(){
     }
     participantes.forEach(p=>{ if(p) integranteMap[p]=(integranteMap[p]||0)+1; });
 
-    // Diario
-    if(s.ts){ const fd=s.ts.split(',')[0].trim(); diarioMap[fd]=(diarioMap[fd]||0)+1; }
-    // Mensual
-    if(s.ts){
-      const partes=s.ts.split(',')[0].split('/');
+    // Diario y Mensual — usar fecha real del servicio
+    const key=s.num?String(s.num):String(s.id);
+    const fd=fechaPorNum[key]||(s.ts?s.ts.split(',')[0].trim():null);
+    if(fd){
+      diarioMap[fd]=(diarioMap[fd]||0)+1;
+      const partes=fd.split('/');
       if(partes.length>=3){
-        const key=`${partes[2].trim()}-${String(partes[1]).padStart(2,'0')}`;
-        mensualMap[key]=(mensualMap[key]||0)+1;
+        const mesKey=`${partes[2].trim()}-${String(partes[1]).padStart(2,'0')}`;
+        mensualMap[mesKey]=(mensualMap[mesKey]||0)+1;
       }
     }
 
@@ -815,7 +860,7 @@ function renderTodo(){
   const movilCantMap={'1 móvil':0,'2 móviles':0,'3+ móviles':0};
   // Agrupar todos los móviles del mismo número de servicio
   const movilesAgrupados={};
-  sv.forEach(s=>{
+  svTodosGlobal.forEach(s=>{
     const key=s.num?String(s.num):String(s.id);
     if(!movilesAgrupados[key]) movilesAgrupados[key]=new Set();
     (s.moviles||[]).forEach(m=>{
@@ -941,8 +986,8 @@ function renderTodo(){
   }
 
   // HISTORIAL TABLE
-  document.getElementById('historial-count').textContent=`${sv.length} REGISTROS`;
-  document.getElementById('historial-body').innerHTML=sv.length?sv.map(s=>{
+  document.getElementById('historial-count').textContent=`${svTodos.length} REGISTROS`;
+  document.getElementById('historial-body').innerHTML=svTodos.length?svTodos.map(s=>{
     const movBadges=(s.moviles||[]).filter(m=>m&&m.trim()).map(m=>`<span class="badge">${'Móvil '+m.replace(/^[Mm][óo]vil\s*/,'').trim()}</span>`).join('');
     const personal=[];
     if(s.chofer&&s.chofer!=='—') personal.push(`<span class="badge verde">Chofer: ${s.chofer}</span>`);
@@ -967,11 +1012,13 @@ function renderTodo(){
       <td>${personal.join('')||'—'}</td>
     </tr>`;
   }).join(''):'<tr><td colspan="7" class="empty">SIN SERVICIOS</td></tr>';
+  } catch(e){ console.error('renderTodo error:', e); }
 }
 
 function exportarCSV(){
   const rows=[['N°','Fecha','Tipo','A cargo','Chofer','Móviles']];
-  serviciosFiltrados.forEach(s=>{
+  const lista=svTodosGlobal.length?svTodosGlobal:serviciosFiltrados;
+  lista.forEach(s=>{
     rows.push([
       s.num||'',s.ts||'',s.tipo||'',s.cargo||'',s.chofer||'',
       (s.moviles||[]).join(' / ')
