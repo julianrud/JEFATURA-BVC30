@@ -463,11 +463,22 @@ function renderTodo(){
     });
   }
 
-  // FRANJA HORARIA
+  // FRANJA HORARIA — usar hora real del servicio del msg
   const FRANJAS=['00-02','02-04','04-06','06-08','08-10','10-12','12-14','14-16','16-18','18-20','20-22','22-24'];
   const horaCount=new Array(12).fill(0);
   sv.forEach(s=>{
-    if(s.ts){const h=s.ts.split(',')[1]?.trim();if(h){const hr=parseInt(h.split(':')[0]);if(!isNaN(hr)&&hr>=0&&hr<24) horaCount[Math.floor(hr/2)]++;}}
+    let hora=null;
+    // Extraer hora del msg: "Hora: HH:MM"
+    if(s.msg){
+      const m=s.msg.match(/Hora[^0-9]+(\d{1,2}):(\d{2})/);
+      if(m) hora=parseInt(m[1]);
+    }
+    // Fallback al ts
+    if(hora===null&&s.ts){
+      const h=s.ts.split(',')[1]?.trim();
+      if(h) hora=parseInt(h.split(':')[0]);
+    }
+    if(hora!==null&&!isNaN(hora)&&hora>=0&&hora<24) horaCount[Math.floor(hora/2)]++;
   });
   if(chartInstances['horario']) chartInstances['horario'].destroy();
   chartInstances['horario']=new Chart(document.getElementById('chart-horario'),{
