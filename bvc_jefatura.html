@@ -859,7 +859,7 @@ function renderTodo(){
   const movilCantMap={'1 móvil':0,'2 móviles':0,'3+ móviles':0};
   // Agrupar todos los móviles del mismo número de servicio
   const movilesAgrupados={};
-  sv.forEach(s=>{
+  svTodosGlobal.forEach(s=>{
     const key=s.num?String(s.num):String(s.id);
     if(!movilesAgrupados[key]) movilesAgrupados[key]=new Set();
     (s.moviles||[]).forEach(m=>{
