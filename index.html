@@ -231,7 +231,7 @@ body{background:var(--negro);color:var(--blanco);font-family:var(--fuente-cuerpo
 <script>
 const DASH_COLORS=['#d32f2f','#378ADD','#1D9E75','#f5c400','#D85A30','#D4537E','#7F77DD','#639922','#E05E2A','#17a2b8'];
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const TOTAL_PERSONAL=86;
+const TOTAL_PERSONAL=84;
 const chartInstances={};
 
 const CODIGOS_GENERAL={'01':'Incendio','02':'Auxilio','03':'Especiales','04':'Desastres','05':'Colaboración','06':'Guardias','07':'Comando','08':'Técnico','09':'Ceremonial','10':'Quím. Peligrosos','11':'Forestal','99':'Otros'};
@@ -322,6 +322,31 @@ function aplicarFiltros(){
 }
 
 // Extrae la fecha real del servicio del campo msg, fallback a ts
+// Diccionario de nombres → grado actual (para normalizar duplicados)
+const PADRON_GRADOS={
+  'Coronel, Pablo':'OF. Auxiliar de Dotación','Gimenez, Jonatan':'OF. Auxiliar','Ortiz, Hernan':'OF. Auxiliar',
+  'Cocini, Maximiliano':'Ayudante Mayor','Vicente, Guillermo':'Ayudante Mayor','Benigni, Jonatan':'Ayudante Mayor',
+  'Larrosa, Maximiliano':'Ayudante Mayor','Geiser, Eduardo':'Ayudante Mayor',
+  'Bonavita, Damian':'Ayudante Principal','Toledo, Emiliano':'Ayudante Principal','Mansilla, Mailen':'Ayudante Principal',
+  'Lopez, Maximiliano':'Ayudante de 1°','Cordovero, Pablo':'Ayudante de 1°','Giacobino, Sebastian':'Ayudante de 1°',
+  'Matrelo, Nicolas':'Ayudante de 1°','Peralta, Jose Luis':'Ayudante de 1°','Ludueña, Osvaldo':'Ayudante de 1°',
+  'Ferrer, Juan Carlos':'Ayudante','Bordon, Jose':'Ayudante','Bugari, Alex':'Ayudante',
+  'Antonio, Agustina':'Subayudante','Maidana, Sebastian':'Subayudante','Sanchez, Tamara':'Subayudante',
+  'Tellechea, Milagros':'Subayudante','Martinez, Silvio':'Subayudante','Lopez, Matias':'Subayudante',
+  'Perez Loayza, Fiamma':'Subayudante','Bugari, Dylan':'Subayudante'
+};
+
+const GRADOS_REGEX=/^(OF\.\s*Auxiliar de Dotaci[oó]n|OF\.\s*Auxiliar|Ayudante Mayor|Ayudante Principal|Ayudante de 1[°º]|Ayudante de 1ra|Ayudante|Subayudante|Bombero|Auxiliar)\s+/i;
+
+function normalizarPersonal(str){
+  // Quitar el grado del inicio para obtener solo el nombre
+  const nombre=str.replace(GRADOS_REGEX,'').trim();
+  // Buscar en el padrón actual para aplicar el grado correcto
+  if(PADRON_GRADOS[nombre]) return `${PADRON_GRADOS[nombre]} ${nombre}`;
+  // Si no está en el padrón, devolver con "Bombero" como grado genérico
+  return str;
+}
+
 function getFechaServicio(s){
   if(s.msg){
     const m=s.msg.match(/Fecha[^0-9]+(\d{2}\/\d{2}\/\d{4})/);
@@ -343,7 +368,7 @@ function resetFiltros(){
 function renderTodo(){
   const sv=serviciosFiltrados;
   const total=sv.length;
-  const hayFiltroTemporal=document.getElementById('filtro-mes').value||document.getElementById('filtro-anio').value;
+  const hayFiltroTemporal=document.getElementById('filtro-mes').value||document.getElementById('filtro-anio').value||document.getElementById('filtro-movil').value||document.getElementById('filtro-tipo').value||document.getElementById('filtro-busqueda').value;
 
   const tipoMap={},movilMap={},integranteMap={},mensualMap={},semanaCount=[0,0,0,0,0,0,0],semanaDias={};
 
@@ -371,7 +396,12 @@ function renderTodo(){
         if(co) part.add(co[1].trim().replace(/\*/g,''));
       });
     }
-    part.forEach(p=>{if(p) integranteMap[p]=(integranteMap[p]||0)+1;});
+    part.forEach(p=>{
+      if(!p) return;
+      // Normalizar grado — extraer solo apellido y nombre para agrupar
+      const normalizado=normalizarPersonal(p);
+      integranteMap[normalizado]=(integranteMap[normalizado]||0)+1;
+    });
 
     // Mensual y día de semana — usar fecha real del servicio
     const fd=getFechaServicio(s);
