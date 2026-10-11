@@ -432,7 +432,30 @@ function renderTodo(){
   const diasConServicio=new Set(sv.map(s=>getFechaServicio(s)).filter(Boolean).map(f=>f.split('/').join('-')));
   const fechasArr=[...diasConServicio].map(f=>{const[d,m,a]=f.split('-').map(Number);return new Date(a,m-1,d);});
   let promedioReal='—';
-  if(fechasArr.length>=2){
+  const filtroMesVal=document.getElementById('filtro-mes').value;
+  const filtroAnioVal=document.getElementById('filtro-anio').value;
+  if(filtroMesVal&&!filtroAnioVal){
+    // Solo mes sin año: usar días del mes actual como período
+    const mesIdx=parseInt(filtroMesVal)-1;
+    const anioRef=new Date().getFullYear();
+    const diasDelMes=new Date(anioRef,mesIdx+1,0).getDate();
+    if(total>0) promedioReal=(total/diasDelMes).toFixed(1);
+  } else if(filtroMesVal&&filtroAnioVal){
+    // Mes + año específico: días del mes de ese año
+    const mesIdx=parseInt(filtroMesVal)-1;
+    const anio=parseInt(filtroAnioVal);
+    const diasDelMes=new Date(anio,mesIdx+1,0).getDate();
+    if(total>0) promedioReal=(total/diasDelMes).toFixed(1);
+  } else if(filtroAnioVal&&!filtroMesVal){
+    // Solo año: días transcurridos del año (1 ene al 31 dic)
+    const anio=parseInt(filtroAnioVal);
+    const hoy=new Date();
+    const finAnio=new Date(anio,11,31);
+    const iniciAnio=new Date(anio,0,1);
+    const finEfectivo=hoy.getFullYear()===anio?hoy:finAnio;
+    const diasAnio=Math.round((finEfectivo-iniciAnio)/(1000*60*60*24))+1;
+    if(total>0) promedioReal=(total/diasAnio).toFixed(1);
+  } else if(fechasArr.length>=2){
     const minF=new Date(Math.min(...fechasArr)),maxF=new Date(Math.max(...fechasArr));
     const dias=Math.round((maxF-minF)/(1000*60*60*24))+1;
     promedioReal=(totalReal/dias).toFixed(1);
