@@ -435,30 +435,30 @@ function renderTodo(){
   const filtroMesVal=document.getElementById('filtro-mes').value; // nombre: "Agosto"
   const filtroAnioVal=document.getElementById('filtro-anio').value; // string: "2026"
   const mesIdx=filtroMesVal?MESES.indexOf(filtroMesVal):-1; // 0-based, -1 si no hay
-  if(mesIdx>=0&&!filtroAnioVal){
-    // Solo mes sin año: usar días del mes (año actual como referencia)
-    const anioRef=new Date().getFullYear();
-    const diasDelMes=new Date(anioRef,mesIdx+1,0).getDate();
-    if(total>0) promedioReal=(total/diasDelMes).toFixed(1);
-  } else if(mesIdx>=0&&filtroAnioVal){
-    // Mes + año específico: días exactos del mes en ese año
-    const anio=parseInt(filtroAnioVal);
-    const diasDelMes=new Date(anio,mesIdx+1,0).getDate();
-    if(total>0) promedioReal=(total/diasDelMes).toFixed(1);
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  if(mesIdx>=0){
+    // Con filtro de mes: usar días transcurridos si es mes actual, o días del mes si es pasado
+    const anioRef=filtroAnioVal?parseInt(filtroAnioVal):hoy.getFullYear();
+    const esMesActual=(anioRef===hoy.getFullYear()&&mesIdx===hoy.getMonth());
+    let diasPeriodo;
+    if(esMesActual){
+      diasPeriodo=hoy.getDate(); // días transcurridos hasta hoy
+    } else {
+      diasPeriodo=new Date(anioRef,mesIdx+1,0).getDate(); // días del mes completo
+    }
+    if(total>0&&diasPeriodo>0) promedioReal=(total/diasPeriodo).toFixed(1);
   } else if(filtroAnioVal&&mesIdx<0){
-    // Solo año: días transcurridos del año
+    // Solo año: días transcurridos del año hasta hoy (o hasta 31/12 si es año pasado)
     const anio=parseInt(filtroAnioVal);
-    const hoy=new Date();
     const inicioAnio=new Date(anio,0,1);
-    const finAnio=new Date(anio,11,31);
-    const finEfectivo=hoy.getFullYear()===anio?hoy:finAnio;
+    const finEfectivo=hoy.getFullYear()===anio?hoy:new Date(anio,11,31);
     const diasAnio=Math.round((finEfectivo-inicioAnio)/(1000*60*60*24))+1;
-    if(total>0) promedioReal=(total/diasAnio).toFixed(1);
+    if(total>0&&diasAnio>0) promedioReal=(total/diasAnio).toFixed(1);
   } else if(fechasArr.length>=2){
+    // Sin filtro: días desde el primer servicio hasta hoy
     const timestamps=fechasArr.map(f=>f.getTime());
     const minF=new Date(Math.min.apply(null,timestamps));
-    const maxF=new Date(Math.max.apply(null,timestamps));
-    const dias=Math.round((maxF-minF)/(1000*60*60*24))+1;
+    const dias=Math.round((hoy-minF)/(1000*60*60*24))+1;
     if(dias>0) promedioReal=(total/dias).toFixed(1);
   } else if(fechasArr.length===1){
     promedioReal=total;
