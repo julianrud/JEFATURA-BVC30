@@ -455,11 +455,13 @@ function renderTodo(){
     const diasAnio=Math.round((finEfectivo-inicioAnio)/(1000*60*60*24))+1;
     if(total>0) promedioReal=(total/diasAnio).toFixed(1);
   } else if(fechasArr.length>=2){
-    const minF=new Date(Math.min(...fechasArr)),maxF=new Date(Math.max(...fechasArr));
+    const timestamps=fechasArr.map(f=>f.getTime());
+    const minF=new Date(Math.min.apply(null,timestamps));
+    const maxF=new Date(Math.max.apply(null,timestamps));
     const dias=Math.round((maxF-minF)/(1000*60*60*24))+1;
-    promedioReal=(totalReal/dias).toFixed(1);
+    if(dias>0) promedioReal=(total/dias).toFixed(1);
   } else if(fechasArr.length===1){
-    promedioReal=totalReal;
+    promedioReal=total;
   }
 
   // MÉTRICAS
